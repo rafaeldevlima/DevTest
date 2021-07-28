@@ -1,0 +1,265 @@
+﻿@page "/login"
+@using DevTest.Shared.DTOs;
+@using DevTest.Shared.Commands;
+@using DevTest.Services;
+@using System.Text.Json
+@using System.Text;
+@using Newtonsoft.Json;
+@inject Microsoft.AspNetCore.Components.NavigationManager navigationManager
+@inject ServiceLogin serviceLogin
+@inject Blazored.LocalStorage.ILocalStorageService storage;
+
+<div align="center" style="align-items:start;vertical-align:central">
+    <h3>Login/Logout</h3><br />
+
+    @if (bAutenticated)
+    {
+        <div align="center" style="align-items:start;vertical-align:central;align-content:start;width:280px">
+
+            @*<label style="align-self:start;align-items:start;">You are logged.</label>*@
+            <br>
+            <button class="btn-primary"
+                    @onclick="Logout"
+                    style="align-self:start;background-color:#342043;color:white;width:150px;height:40px;border-radius:10px 10px">
+                Logout
+            </button>
+        </div>
+    }
+    else
+    {
+        <EditForm Model="@loginDTO">
+
+            <div align="left" style="align-items:start;vertical-align:central;align-content:start;width:280px">
+
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <label style="align-self:start;align-items:start;width:50px">Email</label>
+                <InputText type="email" style="align-self:start;width:280px" placeholder="" @bind-Value="@loginDTO.email" /><br /> <br />
+
+                <label style="align-self:start;align-items:start;width:50px">Password</label><br />
+                <InputText type="password" style="align-self:start;width:280px" placeholder="" @bind-Value="@loginDTO.password" /><br /><br />
+            </div>
+
+            <button class="btn-primary"
+                    @onclick="Login"
+                    disabled="@DisableLoginButton"
+                    style="align-self:start;background-color:#342043;color:white;width:150px;height:40px;border-radius:10px 10px">
+                @GetCaptioLoginButton
+            </button>
+
+            <br />
+            <br />
+            <label hidden="@EmptyMensage" style="width:auto;color:red; height: 30px; text-align: left;">@GetMessageInfo</label><br />
+
+        </EditForm>
+    }
+</div>
+
+
+
+@code {
+
+    private bool _bDisableLogin;
+    public LoginDTO loginDTO;
+    private string _sMsgCaptionLoginButton;
+    private string _sSengMsg;
+    private bool _bEmptyMsg;
+    private bool bAutenticated = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            loginDTO = new LoginDTO();
+
+            DisableLoginButton = false;
+            bAutenticated = await VerifyLoginSession();
+
+            if (!bAutenticated) return;
+
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task<bool> VerifyLoginSession()
+    {
+        try
+        {
+            bool bSessionExist = await storage.ContainKeyAsync("CalcInterestSession");
+
+            if (!bSessionExist)
+            {
+                return false;
+            }
+
+            ResultDTO loginSession = await storage.GetItemAsync<ResultDTO>("CalcInterestSession");
+
+            if (loginSession == null)
+            {
+                return false;
+            }
+
+            return true;
+
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+
+    }
+    public bool DisableLoginButton
+    {
+        get
+        {
+            return _bDisableLogin;
+        }
+        set
+        {
+            _bDisableLogin = value;
+
+            if (!_bDisableLogin)
+            {
+                GetCaptioLoginButton = "Login";
+            }
+            else
+            {
+                GetCaptioLoginButton = "Loading...";
+            }
+
+        }
+    }
+
+    public string GetCaptioLoginButton
+    {
+        get
+        {
+            return _sMsgCaptionLoginButton;
+        }
+        set
+        {
+            _sMsgCaptionLoginButton = value;
+
+            StateHasChanged();
+        }
+    }
+
+
+    public string GetMessageInfo
+    {
+        get
+        {
+            return _sSengMsg;
+        }
+        set
+        {
+            _sSengMsg = value;
+
+            EmptyMensage = string.IsNullOrEmpty(_sSengMsg.Trim());
+
+            StateHasChanged();
+        }
+    }
+
+    public bool EmptyMensage
+    {
+        get
+        {
+            return _bEmptyMsg;
+        }
+        set
+        {
+            _bEmptyMsg = value;
+        }
+    }
+
+    private async void Logout()
+    {
+        try
+        {
+            await ClearSession();
+            navigationManager.NavigateTo("/");
+        }
+        catch (Exception)
+        {
+            GetMessageInfo = "Logout Failed.";
+        }
+    }
+
+    private async void Login()
+    {
+        try
+        {
+
+            GetMessageInfo = "";
+            DisableLoginButton = true;
+
+            if (loginDTO == null)
+            {
+                DisableLoginButton = false;
+                return;
+            }
+
+            if (string.IsNullOrEmpty(loginDTO.password))
+            {
+                DisableLoginButton = false;
+                return;
+            }
+
+            if (string.IsNullOrEmpty(loginDTO.password))
+            {
+                DisableLoginButton = false;
+                return;
+            }
+
+            ResultDTO result = await serviceLogin.LoginAsync(loginDTO);
+
+            if (result.Success)
+            {
+                await SaveSession(result);
+                navigationManager.NavigateTo("/calc");
+            }
+            else
+            {
+                StringBuilder sbMsg = new StringBuilder();
+
+                foreach (string sMsg in result.Messages)
+                {
+                    sbMsg.AppendLine(sMsg);
+                }
+
+                GetMessageInfo = sbMsg.ToString();
+
+                DisableLoginButton = false;
+            }
+
+
+        }
+        catch (Exception ex)
+        {
+            GetMessageInfo = "Login Failed" + ex.Message;
+        }
+    }
+
+    private async Task SaveSession(ResultDTO resultDTO)
+    {
+        try
+        {
+            await storage.SetItemAsync<ResultDTO>("CalcInterestSession", resultDTO);
+        }
+        catch (Exception)
+        {
+
+        }
+
+    }
+
+    private async Task ClearSession()
+    {
+        await storage.RemoveItemAsync("CalcInterestSession");
+    }
+}

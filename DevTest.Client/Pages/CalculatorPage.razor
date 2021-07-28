@@ -1,0 +1,247 @@
+﻿@page "/calc"
+@using DevTest.Shared.DTOs;
+@using DevTest.Model;
+@using DevTest.Shared.Commands;
+@using System.Text.Json;
+@using System.Text;
+@using Newtonsoft.Json;
+@using DevTest.Services;
+@inject ServicesInterestCalc serviceInterestCalc;
+@inject IHttpClientFactory ClientFactory
+@inject Blazored.LocalStorage.ILocalStorageService storage;
+@inject Microsoft.AspNetCore.Components.NavigationManager navigationManager
+
+<h3>Calculator Page</h3>
+
+<h1>Interest Calculator</h1>
+
+@if (!bAutenticated)
+{
+    <p><em>Login to continue...</em></p>}
+else
+{
+    <p>Result Interest Calc: @getCalcinterestResult</p>
+
+    <EditForm Model="@_interestCommand">
+
+
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <label style="align-self:start;align-items:start;width:50px">Initial Value</label><br />
+        <InputNumber style="align-self:start;width:280px" placeholder="" @bind-Value="@_interestCommand.InitialValue" /><br /> <br />
+
+        <label style="align-self:start;align-items:start;width:50px">Time</label><br />
+        <InputNumber type="text" style="align-self:start;width:280px" placeholder="" @bind-Value="@_interestCommand.Time" /><br /> <br />
+
+        <button class="btn btn-primary" @onclick="getInterestCalc">Calculate</button>
+        <br />
+        <br />
+        <label hidden="@EmptyMensage" style="width:auto;color:red; height: 30px; text-align: left;">@GetMessageInfo</label><br />
+
+
+    </EditForm>
+
+    <br />
+
+
+    @*<a class="btn btn-outline-secondary" href=@_sGitHubUrl target="_blank">
+            GitHub Code
+        </a>*@
+
+    <button class="btn btn-outline-secondary" @onclick="NavigateToGitCode">GitHub Code</button>
+
+    <br />
+}
+
+
+
+
+
+@code {
+    private decimal calcinterestResult = 0;
+    private InterestCommand _interestCommand;
+    private string _sGitHubUrl = string.Empty;
+    private bool _bEmptyMsg;
+    private string _sSengMsg;
+    private bool bAutenticated = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _interestCommand = new InterestCommand();
+
+        bAutenticated = await VerifyLoginSession();
+
+        if (!bAutenticated) return;
+
+        getCalcinterestResult = "0";
+
+        await getGitUrl();
+    }
+
+
+    private async Task<bool> VerifyLoginSession()
+    {
+        try
+        {
+            bool bSessionExist = await storage.ContainKeyAsync("CalcInterestSession");
+
+            if (!bSessionExist)
+            {
+                return false;
+            }
+
+            ResultDTO loginSession = await storage.GetItemAsync<ResultDTO>("CalcInterestSession");
+
+            if (loginSession == null)
+            {
+                return false;
+            }
+
+            return true;
+
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+
+    }
+
+    private async Task getInterestCalc()
+    {
+        calcinterestResult = 0;
+        GetMessageInfo = "Loading Calculate Results...";
+
+        var interestCalcResult = await serviceInterestCalc.getInterestCalc(_interestCommand);
+
+        if (interestCalcResult != null)
+        {
+            if (!interestCalcResult.Success)
+            {
+                StringBuilder sbMsg = new StringBuilder();
+                foreach (string sMsg in interestCalcResult.Messages)
+                {
+                    sbMsg.Append(sMsg);
+                }
+
+                GetMessageInfo = sbMsg.ToString();
+            }
+            else
+            {
+                calcinterestResult = interestCalcResult.FinalValue;
+                getCalcinterestResult = calcinterestResult.ToString("N2");
+                GetMessageInfo = "";
+            }
+        }
+
+
+    }
+
+    private async Task NavigateToGitCode()
+    {
+
+        try
+        {
+            await getGitUrl();
+
+            if (String.IsNullOrEmpty(_sGitHubUrl))
+            {
+                GetMessageInfo = "Load Api3 to get git url code..";
+                return;
+            }
+            
+            navigationManager.NavigateTo(_sGitHubUrl);
+
+        }
+        catch (Exception)
+        {
+
+            GetMessageInfo = "Failed to get GitCode Url...";
+        }
+
+    }
+
+    private async Task getGitUrl()
+    {
+
+        try
+        {
+            _sGitHubUrl = string.Empty;
+
+            var client = ClientFactory.CreateClient();
+
+            string apiURL = EndPoints.getUrlAPIGitHub;
+
+            UriBuilder builder = new UriBuilder(apiURL);
+
+
+            using var response = await client.GetAsync(apiURL);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                GetMessageInfo = response.ReasonPhrase;
+            }
+
+            var result = await response.Content.ReadAsStringAsync();
+
+            if (result != null)
+            {
+                _sGitHubUrl = result;
+
+            }
+        }
+        catch (Exception)
+        {
+
+            GetMessageInfo = "Failed to get GitCode Url...";
+        }
+
+    }
+
+
+    public string GetMessageInfo
+    {
+        get
+        {
+            return _sSengMsg;
+        }
+        set
+        {
+            _sSengMsg = value;
+
+            EmptyMensage = string.IsNullOrEmpty(_sSengMsg.Trim());
+
+            StateHasChanged();
+        }
+    }
+
+    private string _sCalcInterestResult = string.Empty;
+
+    public string getCalcinterestResult
+    {
+        get
+        {
+            return _sCalcInterestResult;
+        }
+        set
+        {
+            _sCalcInterestResult = value;
+
+            StateHasChanged();
+        }
+    }
+
+    public bool EmptyMensage
+    {
+        get
+        {
+            return _bEmptyMsg;
+        }
+        set
+        {
+            _bEmptyMsg = value;
+        }
+    }
+
+}
